@@ -10,11 +10,19 @@ import Data.Time.LocalTime
 import Data.Time.Clock
 import Data.Time.Clock.POSIX (getPOSIXTime, posixSecondsToUTCTime)
 import System.Posix.Daemonize
+import System.Posix.Syslog (syslog, Priority(..))
 import qualified Data.ByteString as ByteS
 
 main :: IO ()
-main = withSocketsDo $ do
-	socket <- listenOn $ PortNumber (fromIntegral (read "80"))
+main = serviced runHaskellWeb
+
+runHaskellWeb :: CreateDaemon ()
+runHaskellWeb = simpleDaemon { program = haskellWeb }
+
+haskellWeb :: () -> IO ()
+haskellWeb _ = withSocketsDo $ do
+	socket <- listenOn $ PortNumber (fromIntegral (read "1234"))
+	syslog Notice "HaskellWeb running"
 	sockHandler socket
 
 sockHandler :: Socket -> IO ()
@@ -35,15 +43,15 @@ logRequest request host = do
 	pT <- getPOSIXTime
 	let t = posixSecondsToUTCTime pT
 	let log =  show t ++ "\t" ++ host ++ "\t" ++ request ++ "\n"
-	appendFile "/var/www/logs/server.log" log
+	appendFile "/var/www/server.log" log
 
 requestParser :: Handle -> String -> IO ()
 requestParser handle request = do
 	let path =  drop 2 (request =~ " /[a-zA-Z0-9./-_]{0,}" :: String) -- Parses input of the form "GET /foo/bar/baz.html HTTP/1.1\r"
 	if null path then
-		servePage handle $ path ++ "index.html"
+		servePage handle $ path ++ "/var/www/index.html"
 	else
-		servePage handle path
+		servePage handle $ "/var/www/" ++ path
 
 serveNotFound :: Handle -> IO ()
 serveNotFound handle = do
