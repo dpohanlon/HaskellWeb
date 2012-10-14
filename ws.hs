@@ -13,10 +13,7 @@ import System.Posix.Daemonize
 import qualified Data.ByteString as ByteS
 
 main :: IO ()
-main = serviced listen
-
-listen :: IO ()
-listen = withSocketsDo $ do
+main = withSocketsDo $ do
 	socket <- listenOn $ PortNumber (fromIntegral (read "80"))
 	sockHandler socket
 
@@ -40,12 +37,11 @@ logRequest request host = do
 	let log =  show t ++ "\t" ++ host ++ "\t" ++ request ++ "\n"
 	appendFile "/var/www/logs/server.log" log
 
-
 requestParser :: Handle -> String -> IO ()
 requestParser handle request = do
 	let path =  drop 2 (request =~ " /[a-zA-Z0-9./-_]{0,}" :: String) -- Parses input of the form "GET /foo/bar/baz.html HTTP/1.1\r"
 	if null path then
-		servePage handle (path ++ "index.html")
+		servePage handle $ path ++ "index.html"
 	else
 		servePage handle path
 
@@ -58,12 +54,11 @@ servePage :: Handle -> String -> IO ()
 servePage handle path = do
 	exists <- fileExist path
 	if exists
-		then do
+		then do -- hook here?
 			serveHeader handle path "200 OK"
-			serveFile handle path
+			serveFile handle path 
 		else
 			serveNotFound handle
-
 
 serveFile :: Handle -> String -> IO ()
 serveFile handle path = do
@@ -73,7 +68,7 @@ serveFile handle path = do
 
 serveHeader :: Handle -> String -> String -> IO ()
 serveHeader handle path status = do
-	fileSize <- (getFileSize path)
+	fileSize <- getFileSize path
 	let contentType = getContentType path
 	hPutStr handle $ "HTTP/1.1 " ++ status ++ "\r\n"
 	hPutStr handle $ "Content-Type: " ++ contentType ++ "\r\n"
@@ -82,16 +77,15 @@ serveHeader handle path status = do
 
 getContentType :: String -> String
 getContentType path 
-	| extension == ".html" = "text/html"
-	| extension == ".txt"  = "text/plain"
-	| extension == ".css"  = "text/css"
+	| extension == ".html"        = "text/html"
+	| extension == ".txt"         = "text/plain"
+	| extension == ".css"         = "text/css"
 	| extension =~ "(.jpeg|.jpg)" = "image/jpeg"
-	| extension == ".png"  = "image/png"
-	| extension == ".gif"  = "image/gif"
+	| extension == ".png"         = "image/png"
+	| extension == ".gif"         = "image/gif"
 	| otherwise = "text/plain"
 	where extension = takeExtension path
 
 getFileSize :: String -> IO Integer
-getFileSize path = do
-	h <- openFile path ReadMode 
-	hFileSize h
+getFileSize path =
+	openFile path ReadMode >>= hFileSize 
