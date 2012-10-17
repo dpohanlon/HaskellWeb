@@ -1,9 +1,26 @@
+{-
+
+Simple static HTTP web server in Haskell. Only responds to requests of the form
+"GET /foo/bar/baz.html HTTP/1.1\r"
+
+Logs in /var/www/logs/server.log as TIME/DATE HOST REQUEST
+
+Fully daemonized - control with {start, stop, restart}
+
+TODO:
+	Configuration file - set log settings and file paths
+	Respond to more HTTP requests (HEAD, etc)
+	Syntax
+	Server statistics
+	
+-}
 import Network (listenOn, withSocketsDo, accept, PortID(..), Socket)
 import GHC.IO.Handle (hClose)
 import System.Environment (getArgs)
 import System.FilePath.Posix (takeExtension)
 import System.Posix.Files (fileExist)
-import System.IO (hSetBuffering, hGetLine, hPutStr, hPutStrLn, hFileSize, openFile, IOMode(ReadMode), FilePath, BufferMode(..), Handle)
+import System.IO (hSetBuffering, hGetLine, hPutStr, hPutStrLn, hFileSize, openFile,
+				  IOMode(ReadMode), FilePath, BufferMode(..), Handle)
 import Control.Concurrent (forkIO)
 import Text.Regex.Posix
 import Data.Time.LocalTime
@@ -16,12 +33,17 @@ import qualified Data.ByteString as ByteS
 main :: IO ()
 main = serviced runHaskellWeb
 
-runHaskellWeb :: CreateDaemon ()
-runHaskellWeb = simpleDaemon { program = haskellWeb }
+runHaskellWeb :: CreateDaemon Socket -- privilegedAction (IO a) -> CreateDaemon (a)
+runHaskellWeb = simpleDaemon { 
+							   program          = haskellWeb, 
+							   privilegedAction = bindPort    
+						     }
 
-haskellWeb :: () -> IO ()
-haskellWeb _ = withSocketsDo $ do
-	socket <- listenOn $ PortNumber (fromIntegral (read "1234"))
+bindPort :: IO Socket
+bindPort = withSocketsDo . listenOn . PortNumber . fromIntegral . read $ "80"
+
+haskellWeb :: Socket -> IO ()
+haskellWeb socket = withSocketsDo $ do
 	syslog Notice "HaskellWeb running"
 	sockHandler socket
 
@@ -43,15 +65,16 @@ logRequest request host = do
 	pT <- getPOSIXTime
 	let t = posixSecondsToUTCTime pT
 	let log =  show t ++ "\t" ++ host ++ "\t" ++ request ++ "\n"
-	appendFile "/var/www/server.log" log
+	appendFile "/var/www/logs/server.log" log
 
+-- Parses HTTP request of the form "GET /foo/bar/baz.html HTTP/1.1\r"
 requestParser :: Handle -> String -> IO ()
 requestParser handle request = do
-	let path =  drop 2 (request =~ " /[a-zA-Z0-9./-_]{0,}" :: String) -- Parses input of the form "GET /foo/bar/baz.html HTTP/1.1\r"
+	let path =  drop 2 (request =~ " /[a-zA-Z0-9./-_]{0,}" :: String)
 	if null path then
-		servePage handle $ path ++ "/var/www/index.html"
+		servePage handle $ path ++ "/var/www/fortranfortranfortran.com/index.html"
 	else
-		servePage handle $ "/var/www/" ++ path
+		servePage handle $ "/var/www/fortranfortranfortran.com/" ++ path
 
 serveNotFound :: Handle -> IO ()
 serveNotFound handle = do
