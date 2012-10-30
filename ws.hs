@@ -12,8 +12,9 @@ TODO:
 	Respond to more HTTP requests (HEAD, etc)
 	Syntax
 	Server statistics
-	
+
 -}
+
 import Network (listenOn, withSocketsDo, accept, PortID(..), Socket)
 import GHC.IO.Handle (hClose)
 import System.Environment (getArgs)
@@ -28,16 +29,14 @@ import Data.Time.Clock
 import Data.Time.Clock.POSIX (getPOSIXTime, posixSecondsToUTCTime)
 import System.Posix.Daemonize
 import System.Posix.Syslog (syslog, Priority(..))
-import qualified Data.ByteString as ByteS
+import qualified Data.ByteString.Lazy as ByteS
 
 main :: IO ()
 main = serviced runHaskellWeb
 
 runHaskellWeb :: CreateDaemon Socket -- privilegedAction (IO a) -> CreateDaemon (a)
-runHaskellWeb = simpleDaemon { 
-							   program          = haskellWeb, 
-							   privilegedAction = bindPort    
-						     }
+runHaskellWeb = simpleDaemon { program          = haskellWeb, 
+							   privilegedAction = bindPort }
 
 bindPort :: IO Socket
 bindPort = withSocketsDo . listenOn . PortNumber . fromIntegral . read $ "80"
@@ -70,7 +69,7 @@ logRequest request host = do
 -- Parses HTTP request of the form "GET /foo/bar/baz.html HTTP/1.1\r"
 requestParser :: Handle -> String -> IO ()
 requestParser handle request = do
-	let path =  drop 2 (request =~ " /[a-zA-Z0-9./-_]{0,}" :: String)
+	let path =  drop 2 $ request =~ " /[a-zA-Z0-9./-_]{0,}" :: String
 	if null path then
 		servePage handle $ path ++ "/var/www/fortranfortranfortran.com/index.html"
 	else
@@ -78,8 +77,8 @@ requestParser handle request = do
 
 serveNotFound :: Handle -> IO ()
 serveNotFound handle = do
-	serveHeader handle "404.html" "404 Not Found"
-	serveFile handle "404.html"
+	serveHeader handle "/var/www/fortranfortranfortran.com/404.html" "404 Not Found"
+	serveFile handle "/var/www/fortranfortranfortran.com/404.html"
 
 servePage :: Handle -> String -> IO ()
 servePage handle path = do
