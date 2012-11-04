@@ -16,11 +16,12 @@ TODO:
 -}
 
 import Network (listenOn, withSocketsDo, accept, PortID(..), Socket)
+import Data.Maybe
 import GHC.IO.Handle (hClose)
 import System.Environment (getArgs)
 import System.FilePath.Posix (takeExtension)
 import System.Posix.Files (fileExist)
-import System.IO (hSetBuffering, hGetLine, hPutStr, hPutStrLn, hFileSize, openFile,
+import System.IO (hSetBuffering, hGetLine, hGetContents, hPutStr, hPutStrLn, hFileSize, openFile,
 				  IOMode(ReadMode), FilePath, BufferMode(..), Handle)
 import Control.Concurrent (forkIO)
 import Text.Regex.Posix
@@ -29,6 +30,7 @@ import Data.Time.Clock
 import Data.Time.Clock.POSIX (getPOSIXTime, posixSecondsToUTCTime)
 import System.Posix.Daemonize
 import System.Posix.Syslog (syslog, Priority(..))
+import HTTPRequestParser
 import qualified Data.ByteString.Lazy as ByteS
 
 main :: IO ()
@@ -36,7 +38,7 @@ main = serviced runHaskellWeb
 
 runHaskellWeb :: CreateDaemon Socket -- privilegedAction (IO a) -> CreateDaemon (a)
 runHaskellWeb = simpleDaemon { program          = haskellWeb, 
-							   privilegedAction = bindPort }
+                               privilegedAction = bindPort }
 
 bindPort :: IO Socket
 bindPort = withSocketsDo . listenOn . PortNumber . fromIntegral . read $ "80"
@@ -55,8 +57,8 @@ sockHandler socket = do
 
 requestHandler :: Handle -> String -> IO ()
 requestHandler handle host = do
-	request <- hGetLine handle
-	logRequest request host
+	request <- hGetContents handle
+	--logRequest request host
 	requestParser handle request
 
 logRequest :: String -> String -> IO ()
@@ -69,26 +71,26 @@ logRequest request host = do
 -- Parses HTTP request of the form "GET /foo/bar/baz.html HTTP/1.1\r"
 requestParser :: Handle -> String -> IO ()
 requestParser handle request = do
-	let path =  drop 2 $ request =~ " /[a-zA-Z0-9./-_]{0,}" :: String
-	if null path then
-		servePage handle $ path ++ "/var/www/fortranfortranfortran.com/index.html"
+	let httpReq = parseHTTP request
+	let path = reqURL httpReq
+	let site = stripWWW $ reqSite httpReq
+	if null (stripFS path) then
+		servePage handle site "/index.html"
 	else
-		servePage handle $ "/var/www/fortranfortranfortran.com/" ++ path
+		servePage handle site path
 
-serveNotFound :: Handle -> IO ()
-serveNotFound handle = do
-	serveHeader handle "/var/www/fortranfortranfortran.com/404.html" "404 Not Found"
-	serveFile handle "/var/www/fortranfortranfortran.com/404.html"
-
-servePage :: Handle -> String -> IO ()
-servePage handle path = do
-	exists <- fileExist path
-	if exists
+servePage :: Handle -> String -> String -> IO ()
+servePage handle site path = do
+	let fullPath = "/var/www/" ++ site ++ path
+	let notFoundPath = "/var/www/" ++ site ++ "/404.html"
+	pathExists <- fileExist fullPath
+	if pathExists
 		then do -- hook here?
-			serveHeader handle path "200 OK"
-			serveFile handle path 
-		else
-			serveNotFound handle
+			serveHeader handle fullPath "200 OK"
+			serveFile handle fullPath
+		else do
+			serveHeader handle notFoundPath "404 Not Found"
+			serveFile handle notFoundPath
 
 serveFile :: Handle -> String -> IO ()
 serveFile handle path = do
@@ -115,6 +117,14 @@ getContentType path
 	| extension == ".gif"         = "image/gif"
 	| otherwise = "text/plain"
 	where extension = takeExtension path
+
+stripWWW :: String -> String
+stripWWW ('w':'w':'w':'.':xs) = xs
+stripWWW xs = xs
+
+stripFS :: String -> String
+stripFS ('/':xs) = xs
+stripFS xs = xs
 
 getFileSize :: String -> IO Integer
 getFileSize path =
